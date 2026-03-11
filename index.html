@@ -629,33 +629,58 @@ async function send(data) {
 
 updateUI();
 
-// ── Ping kroku 0 tylko dla prawdziwych użytkowników ──────────
-// Bot crawluje natychmiast i nie wchodzi w interakcję.
-// Czekamy 2s + wymagamy choć jednego zdarzenia użytkownika.
+// ── Ping kroku 0 — rozróżnienie missclick vs przeczytał ──────
+// Próg: 3 sekundy od pierwszej interakcji użytkownika.
+// < 3s  → intro_missclick  (przypadkowe wejście, nie zdążył przeczytać)
+// ≥ 3s  → intro_przeczytał (przeczytał intro, ale nie kliknął Kontynuuj)
+// Przejście do slajdu 1 (goTo(1)) anuluje timer — nie wysyłamy nic,
+// bo użytkownik kontynuuje formularz.
 (function() {
   var humanDetected = false;
-  var pingTimer = null;
+  var introTimer    = null;
+  var interactionAt = null;
+  var wentFurther   = false;         // ustawiane przez goTo() gdy n > 0
 
-  function scheduleHumanPing() {
+  // Monkey-patch goTo żeby wiedzieć czy użytkownik poszedł dalej
+  var _origGoTo = goTo;
+  goTo = function(n) {
+    if (n > 0) wentFurther = true;
+    _origGoTo(n);
+  };
+
+  function scheduleIntroPing() {
     if (humanDetected) return;
     humanDetected = true;
-    // Wyślij ping po 2 sekundach od pierwszej interakcji
-    pingTimer = setTimeout(function() {
-      ping(0, 'entered');
-    }, 2000);
+    interactionAt = Date.now();
+
+    // Po 3s od interakcji — jeśli nadal na intro (slide 0) wyślij ping
+    introTimer = setTimeout(function() {
+      if (!wentFurther && cur === 0) {
+        ping(0, 'intro_przeczytał');   // był ≥ 3s na intro i wyszedł
+      }
+    }, 3000);
   }
+
+  // Przy zamknięciu/opuszczeniu strony gdy jest jeszcze na intro
+  function onLeave() {
+    if (wentFurther || cur !== 0 || !humanDetected) return;
+    var timeOnIntro = Date.now() - (interactionAt || Date.now());
+    if (timeOnIntro < 3000) {
+      ping(0, 'intro_missclick');      // < 3s — przypadkowe wejście
+    } else {
+      // introTimer już wysłał lub zaraz wyśle — nie duplikujemy
+    }
+  }
+
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'hidden') onLeave();
+  });
+  window.addEventListener('pagehide', onLeave);
 
   // Zdarzenia które generuje tylko prawdziwy użytkownik
   ['touchstart','touchmove','mousemove','mousedown','scroll','keydown'].forEach(function(ev) {
-    document.addEventListener(ev, scheduleHumanPing, { once: true, passive: true });
+    document.addEventListener(ev, scheduleIntroPing, { once: true, passive: true });
   });
-
-  // Fallback: jeśli po 8s nadal brak interakcji — NIE wysyłamy (to bot)
-  setTimeout(function() {
-    if (!humanDetected) {
-      // cicho odrzucamy
-    }
-  }, 8000);
 })();
 </script>
 </body>
