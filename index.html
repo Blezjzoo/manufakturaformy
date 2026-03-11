@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Manufaktura Formy – Formularz</title>
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://connect.facebook.net">
+<link rel="dns-prefetch" href="https://script.google.com">
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; overflow-x: hidden; }
@@ -623,39 +626,71 @@ async function ping(step, event) {
 
 async function send(data) {
   try {
-    await fetch(SHEETS_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
-  } catch(e){console.error(e);}
+    await fetch(SHEETS_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      keepalive: true, // dokańcza wysyłkę nawet gdy użytkownik zamknie kartę
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+  } catch(e) { console.error(e); }
 }
 
 updateUI();
 
-// ── Ping kroku 0 tylko dla prawdziwych użytkowników ──────────
-// Bot crawluje natychmiast i nie wchodzi w interakcję.
-// Czekamy 2s + wymagamy choć jednego zdarzenia użytkownika.
+// ── Ochrona przed botami i scraperami (Facebook, Google, inne) ────────────
 (function() {
-  var humanDetected = false;
-  var pingTimer = null;
 
-  function scheduleHumanPing() {
-    if (humanDetected) return;
-    humanDetected = true;
-    // Wyślij ping po 2 sekundach od pierwszej interakcji
-    pingTimer = setTimeout(function() {
-      ping(0, 'entered');
-    }, 2000);
+  // 1. Blokada na poziomie User-Agent
+  var ua = navigator.userAgent || '';
+  var botUA = /facebookexternalhit|facebot|Twitterbot|LinkedInBot|Googlebot|bingbot|Baiduspider|YandexBot|DuckDuckBot|Slurp|ia_archiver|Applebot|PetalBot|SemrushBot|AhrefsBot|DotBot|MJ12bot|archive\.org|wget|curl|python|java\/|Go-http|scrapy/i;
+  if (botUA.test(ua)) return; // cicho wychodzi, nie rejestruje wizyty
+
+  // 2. Blokada headless / webdriver (Puppeteer, Playwright, Selenium)
+  if (navigator.webdriver) return;
+
+  // 3. Blokada kart otwartych w tle (Facebook pre-fetch)
+  // document.hidden === true oznacza kartę niewidoczną dla użytkownika
+  if (document.hidden) {
+    // Poczekaj — może użytkownik przełączy na tę kartę
+    var becameVisible = false;
+    document.addEventListener('visibilitychange', function onVisible() {
+      if (!document.hidden && !becameVisible) {
+        becameVisible = true;
+        document.removeEventListener('visibilitychange', onVisible);
+        waitForHumanInteraction(); // dopiero teraz zaczynamy nasłuch
+      }
+    });
+    return; // nie rejestrujemy nic dopóki karta jest w tle
   }
 
-  // Zdarzenia które generuje tylko prawdziwy użytkownik
-  ['touchstart','touchmove','mousemove','mousedown','scroll','keydown'].forEach(function(ev) {
-    document.addEventListener(ev, scheduleHumanPing, { once: true, passive: true });
-  });
+  waitForHumanInteraction();
 
-  // Fallback: jeśli po 8s nadal brak interakcji — NIE wysyłamy (to bot)
-  setTimeout(function() {
-    if (!humanDetected) {
-      // cicho odrzucamy
+  function waitForHumanInteraction() {
+    var humanDetected = false;
+
+    function scheduleHumanPing() {
+      if (humanDetected) return;
+      humanDetected = true;
+      // Wyślij ping po 1.5s od pierwszej interakcji człowieka
+      setTimeout(function() {
+        ping(0, 'entered');
+      }, 1500);
     }
-  }, 8000);
+
+    // Zdarzenia generowane wyłącznie przez prawdziwego użytkownika
+    ['touchstart','touchmove','mousemove','mousedown','scroll','keydown','click'].forEach(function(ev) {
+      document.addEventListener(ev, scheduleHumanPing, { once: true, passive: true });
+    });
+
+    // Fallback: brak interakcji po 9s = bot lub pre-render → nie rejestrujemy
+    setTimeout(function() {
+      if (!humanDetected) {
+        // cicho odrzucamy — to scraper lub pre-fetch Facebooka
+      }
+    }, 9000);
+  }
+
 })();
 </script>
 </body>
