@@ -595,6 +595,7 @@ async function submitForm() {
   await send({
     type:'submission',
     session_id: SESSION_ID,
+    event_id:   SESSION_ID,   // ← wysyłane do CAPI dla deduplikacji
     timestamp: new Date().toISOString(),
     czas_wypelniania: Math.round((Date.now()-t0)/1000)+'s',
     imie_nazwisko: ans.name,
@@ -605,8 +606,8 @@ async function submitForm() {
     zgoda_telefon: ans.cbPhone?'TAK':'NIE',
   });
   btn.classList.remove('loading');
-  fbTrack('Lead');
-  fbTrack('Contact',{currency:'PLN',value:1});
+  // Tylko Contact (= "Kontakt" w PL interfejsie Meta) z eventID do deduplikacji z CAPI
+  fbq('track', 'Contact', {currency:'PLN', value:1}, {eventID: SESSION_ID});
   goTo(4);
 }
 
