@@ -421,6 +421,14 @@ const TOTAL_STEPS = 4; // 0..3 visible dots
 function fbTrack(event, params) { try { if (typeof fbq==='function') fbq('track', event, params||{}); } catch(e){} }
 function fbCustom(event, params) { try { if (typeof fbq==='function') fbq('trackCustom', event, params||{}); } catch(e){} }
 
+// Odczyt cookie _fbp — wysyłane do CAPI bez hashowania
+function getFbp() {
+  try {
+    var match = document.cookie.match(/(^|;)\s*_fbp=([^;]+)/);
+    return match ? match[2] : "";
+  } catch(e) { return ""; }
+}
+
 // ── Phone formatter ──
 document.addEventListener('DOMContentLoaded', function() {
   var inp = document.getElementById('inp-phone');
@@ -595,6 +603,8 @@ async function submitForm() {
   await send({
     type:'submission',
     session_id: SESSION_ID,
+    event_id:   SESSION_ID,   // ← wysyłane do CAPI dla deduplikacji
+    fbp:        getFbp(),     // ← cookie _fbp, poprawia jakość dopasowania
     timestamp: new Date().toISOString(),
     czas_wypelniania: Math.round((Date.now()-t0)/1000)+'s',
     imie_nazwisko: ans.name,
@@ -605,8 +615,8 @@ async function submitForm() {
     zgoda_telefon: ans.cbPhone?'TAK':'NIE',
   });
   btn.classList.remove('loading');
-  fbTrack('Lead');
-  fbTrack('Contact',{currency:'PLN',value:1});
+  // Tylko Contact (= "Kontakt" w PL interfejsie Meta) z eventID do deduplikacji z CAPI
+  fbq('track', 'Contact', {currency:'PLN', value:1}, {eventID: SESSION_ID});
   goTo(4);
 }
 
